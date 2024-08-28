@@ -14,10 +14,13 @@ public class App {
     static int[] gxx;
     static int[] gyy;
     static int[] gxy;
-    static int[][] s;
+    static double[][] s;
 
     /// The row count, which starts at 1 to avoid the first row of the image.
     static int row = 1;
+
+    /// The constant k in the Harris corner response function.
+    static final double k = 0.06;
 
     /**
      * Converts a color pixel value to a grayscale intensity.
@@ -77,14 +80,60 @@ public class App {
         row++;
     }
 
+    /**
+     * Updates the Gaussian buffers with the current derivatives stored in the buffers.
+     */
     private static void updateGaussian() {
-        int[] gaussian = { 1, 4, 6, 4, 1 };
+        // perform vertical convolution with matrix [1, 4, 6, 4, 1]
         for (int i = 0; i < gxx.length; i++) {
-            gxx[i] += ixx[(row + 1) % 5][i];
+            gxx[i] += ixx[(row - 1) % 5][i];
+            gxx[i] += ixx[row % 5][i] << 2;
+            gxx[i] += (ixx[(row + 1) % 5][i] << 2 + ixx[(row + 3) % 5][i]) << 2;
             gxx[i] += ixx[(row + 2) % 5][i] << 2;
-            gxx[i] += (ixx[(row + 3) % 5][i] << 2 + ixx[(row + 3) % 5][i]) << 2;
-            gxx[i] += ixx[(row + 4) % 5][i] << 2;
-            gxx[i] += ixx[(row + 5) % 5][i];
+            gxx[i] += ixx[(row + 3) % 5][i];
+
+            gyy[i] += iyy[(row - 1) % 5][i];
+            gyy[i] += iyy[row % 5][i] << 2;
+            gyy[i] += (iyy[(row + 1) % 5][i] << 2 + iyy[(row + 3) % 5][i]) << 2;
+            gyy[i] += iyy[(row + 2) % 5][i] << 2;
+            gyy[i] += iyy[(row + 3) % 5][i];
+
+            gxy[i] += ixy[(row - 1) % 5][i];
+            gxy[i] += ixy[row % 5][i] << 2;
+            gxy[i] += (ixy[(row + 1) % 5][i] << 2 + ixy[(row + 3) % 5][i]) << 2;
+            gxy[i] += ixy[(row + 2) % 5][i] << 2;
+            gxy[i] += ixy[(row + 3) % 5][i];
+        }
+
+        // perform horizontal convolution with matrix [1, 4, 6, 4, 1]
+        for (int i = 0; i < gxx.length - 4; i++) {
+            gxx[i] += gxx[i + 1] << 2;
+            gxx[i] += (gxx[i + 2] << 2 + gxx[i + 2]) << 2;
+            gxx[i] += gxx[i + 3] << 2;
+            gxx[i] += gxx[i + 4];
+
+            gyy[i] += gyy[i + 1] << 2;
+            gyy[i] += (gyy[i + 2] << 2 + gyy[i + 2]) << 2;
+            gyy[i] += gyy[i + 3] << 2;
+            gyy[i] += gyy[i + 4];
+
+            gxy[i] += gxy[i + 1] << 2;
+            gxy[i] += (gxy[i + 2] << 2 + gxy[i + 2]) << 2;
+            gxy[i] += gxy[i + 3] << 2;
+            gxy[i] += gxy[i + 4];
+        }
+
+    }
+
+    /*
+     * Updates the strength array with the current Gaussian buffers.
+     */
+    private static void updateStrength() {
+        for (int i = 0; i < gxx.length - 4; i++) {
+            int det = gxx[i] * gyy[i] - gxy[i] * gxy[i];
+            int trace = gxx[i] + gyy[i];
+            double strength = det - k * trace * trace;
+            s[row - 6][i] = strength;
         }
     }
 
@@ -102,7 +151,7 @@ public class App {
         int width = image.getWidth();
         int height = image.getHeight();
         int[][] grayImage = new int[height][width];
-        s = new int[height - 6][width - 6];
+        s = new double[height - 6][width - 6];
 
         // initialize derivative buffers 
         ixx = new int[5][width - 2];
@@ -115,18 +164,25 @@ public class App {
         gxy = new int[width - 2];
 
         // set image values to grayscale and update grayscale array
-        for (int i = 0; i < width; i++) {
-            for (int j = 0; j < height; j++) {
-                int gray = toGrayscale(image.getRGB(i, j));
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                int gray = toGrayscale(image.getRGB(j, i));
                 grayImage[i][j] = gray;
                 Color grayColor = new Color(gray, gray, gray);
-                image.setRGB(i, j, grayColor.getRGB());
+                image.setRGB(j, i, grayColor.getRGB());
             }
         }
 
         // initially calculate first 5 lines of derivatives
         for (int i = 0; i < 5; i++) {
             updateDerivatives(grayImage);
+        }
+
+        // loop to calculate derivatives and strengths
+        for (int i = 5; i < height - 6; i++) {
+            updateDerivatives(grayImage);
+            updateGaussian();
+            updateStrength();
         }
 
         // save new grayscale image
