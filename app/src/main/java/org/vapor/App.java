@@ -3,9 +3,55 @@ package org.vapor;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+
+/**
+ * Represents a feature in an image with its strength value and coordinates.
+ */
+class Feature {
+    /** The strength value of the feature. */
+    double value;
+
+    /** The x-coordinate of the feature in the image. */
+    int x;
+
+    /** The y-coordinate of the feature in the image. */
+    int y;
+
+    /**
+     * Constructs a new Feature with the specified strength value and coordinates.
+     *
+     * @param value The strength value of the feature.
+     * @param x The x-coordinate of the feature in the image.
+     * @param y The y-coordinate of the feature in the image.
+     */
+    Feature(double value, int x, int y) {
+        this.value = value;
+        this.x = x;
+        this.y = y;
+    }
+}
+
+/**
+ * Comparator for sorting Feature objects based on their strength value in descending order.
+ */
+class SortStrength implements Comparator<Feature> {
+    /**
+     * Compares two Feature objects based on their strength values.
+     *
+     * @param a the first Feature to be compared.
+     * @param b the second Feature to be compared.
+     * @return a negative integer, zero, or a positive integer as the first argument
+     *         is less than, equal to, or greater than the second.
+     */
+    public int compare(Feature a, Feature b) {
+        return Double.compare(b.value, a.value);
+    }
+}
 
 public class App {
     static int[][] ixx;
@@ -16,11 +62,14 @@ public class App {
     static int[] gxy;
     static double[][] s;
 
-    /// The row count, which starts at 1 to avoid the first row of the image.
+    /** The row count, which starts at 1 to avoid the first row of the image. */
     static int row = 1;
 
-    /// The constant k in the Harris corner response function.
+    /** The constant k in the Harris corner response function. */
     static final double k = 0.06;
+
+    /** The cap on the number of features in each of the 50 buckets. */
+    static final int bucketCap = 100;
 
     /**
      * Converts a color pixel value to a grayscale intensity.
@@ -122,7 +171,6 @@ public class App {
             gxy[i] += gxy[i + 3] << 2;
             gxy[i] += gxy[i + 4];
         }
-
     }
 
     /*
@@ -180,9 +228,55 @@ public class App {
 
         // loop to calculate derivatives and strengths
         for (int i = 5; i < height - 6; i++) {
-            updateDerivatives(grayImage);
             updateGaussian();
             updateStrength();
+            updateDerivatives(grayImage);
+        }
+
+        // initialize list of features
+        ArrayList<ArrayList<Feature>> features = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            features.add(new ArrayList<Feature>());
+        }
+
+        // use non-max suppression to declare features, split into 50 buckets
+        int rowBound = s.length / 5;
+        int colBound = s[0].length / 10;
+        for (int i = 2; i < s.length - 2; i++) {
+            int rowBucket = (int) (i / rowBound) > 4 ? 4 : (int) (i / rowBound); 
+            for (int j = 2; j < s[0].length - 2; j++) {
+                double v = s[i][j];
+                
+                // if strength is greater than all other strengths in a 5x5 window
+                if (v > s[i-2][j-2] && v > s[i-2][j-1] && v > s[i-2][j] && v > s[i-2][j+1] && v > s[i-2][j+2] &&
+                    v > s[i-1][j-2] && v > s[i-1][j-1] && v > s[i-1][j] && v > s[i-1][j+1] && v > s[i-1][j+2] &&
+                    v > s[i][j-2] && v > s[i][j-1] && v > s[i][j+1] && v > s[i][j+2] &&
+                    v > s[i+1][j-2] && v > s[i+1][j-1] && v > s[i+1][j] && v > s[i+1][j+1] && v > s[i+1][j+2] &&
+                    v > s[i+2][j-2] && v > s[i+2][j-1] && v > s[i+2][j] && v > s[i+2][j+1] && v > s[i+2][j+2]) {
+                    int colBucket = (int) (j / colBound) > 9 ? 9 : (int) (j / colBound);
+                    int bucket = rowBucket * 10 + colBucket;
+                    features.get(bucket).add(new Feature(v, i, j));
+                    j += 2;
+                }
+            }
+        }
+
+        // sort features in each bucket by strength and use top features
+        for (int i = 0; i < 50; i++) {
+            features.get(i).sort(new SortStrength());
+            int top = features.get(i).size() > bucketCap ? bucketCap : features.get(i).size();
+            features.set(i, new ArrayList<Feature>(features.get(i).subList(0, top)));
+        }
+
+        // draw features on image
+        for (int i = 0; i < 50; i++) {
+            for (Feature f : features.get(i)) {
+                for (int j = f.x - 2; j <= f.x + 2; j++) {
+                    for (int k = f.y - 2; k <= f.y + 2; k++) {
+                        image.setRGB(k, j, Color.RED.getRGB());
+                    }
+                }
+            }
         }
 
         // save new grayscale image
