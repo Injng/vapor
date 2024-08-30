@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.Math;
 
 /**
  * Represents a feature in an image with its strength value and coordinates.
@@ -54,12 +55,12 @@ class SortStrength implements Comparator<Feature> {
 }
 
 public class App {
-    static int[][] ixx;
-    static int[][] iyy;
-    static int[][] ixy;
-    static int[] gxx;
-    static int[] gyy;
-    static int[] gxy;
+    static long[][] ixx;
+    static long[][] iyy;
+    static long[][] ixy;
+    static long[] gxx;
+    static long[] gyy;
+    static long[] gxy;
     static double[][] s;
 
     /** The row count, which starts at 1 to avoid the first row of the image. */
@@ -129,60 +130,93 @@ public class App {
         row++;
     }
 
+    private static final int[] WEIGHTS = {1, 4, 6, 4, 1};
+    private static final int KERNEL_SIZE = 5;
+    private static final int KERNEL_RADIUS = KERNEL_SIZE / 2;
+
     /**
      * Updates the Gaussian buffers with the current derivatives stored in the buffers.
      */
     private static void updateGaussian() {
-        // perform vertical convolution with matrix [1, 4, 6, 4, 1]
+        // Perform vertical convolution
         for (int i = 0; i < gxx.length; i++) {
-            gxx[i] += ixx[(row - 1) % 5][i];
-            gxx[i] += ixx[row % 5][i] << 2;
-            gxx[i] += (ixx[(row + 1) % 5][i] << 2 + ixx[(row + 3) % 5][i]) << 2;
-            gxx[i] += ixx[(row + 2) % 5][i] << 2;
-            gxx[i] += ixx[(row + 3) % 5][i];
-
-            gyy[i] += iyy[(row - 1) % 5][i];
-            gyy[i] += iyy[row % 5][i] << 2;
-            gyy[i] += (iyy[(row + 1) % 5][i] << 2 + iyy[(row + 3) % 5][i]) << 2;
-            gyy[i] += iyy[(row + 2) % 5][i] << 2;
-            gyy[i] += iyy[(row + 3) % 5][i];
-
-            gxy[i] += ixy[(row - 1) % 5][i];
-            gxy[i] += ixy[row % 5][i] << 2;
-            gxy[i] += (ixy[(row + 1) % 5][i] << 2 + ixy[(row + 3) % 5][i]) << 2;
-            gxy[i] += ixy[(row + 2) % 5][i] << 2;
-            gxy[i] += ixy[(row + 3) % 5][i];
+            long sumXX = 0, sumYY = 0, sumXY = 0;
+            for (int j = 0; j < KERNEL_SIZE; j++) {
+                int index = (row + j - KERNEL_RADIUS + 5) % 5;
+                sumXX += ixx[index][i] * WEIGHTS[j];
+                sumYY += iyy[index][i] * WEIGHTS[j];
+                sumXY += ixy[index][i] * WEIGHTS[j];
+            }
+            gxx[i] = sumXX;
+            gyy[i] = sumYY;
+            gxy[i] = sumXY;
         }
 
-        // perform horizontal convolution with matrix [1, 4, 6, 4, 1]
-        for (int i = 0; i < gxx.length - 4; i++) {
-            gxx[i] += gxx[i + 1] << 2;
-            gxx[i] += (gxx[i + 2] << 2 + gxx[i + 2]) << 2;
-            gxx[i] += gxx[i + 3] << 2;
-            gxx[i] += gxx[i + 4];
-
-            gyy[i] += gyy[i + 1] << 2;
-            gyy[i] += (gyy[i + 2] << 2 + gyy[i + 2]) << 2;
-            gyy[i] += gyy[i + 3] << 2;
-            gyy[i] += gyy[i + 4];
-
-            gxy[i] += gxy[i + 1] << 2;
-            gxy[i] += (gxy[i + 2] << 2 + gxy[i + 2]) << 2;
-            gxy[i] += gxy[i + 3] << 2;
-            gxy[i] += gxy[i + 4];
+        // Perform horizontal convolution
+        for (int i = 0; i < gxx.length - KERNEL_SIZE; i++) {
+            long sumXX = gxx[i], sumYY = gyy[i], sumXY = gxy[i];
+            for (int j = 1; j < KERNEL_SIZE; j++) {
+                sumXX += gxx[i + j] * WEIGHTS[j];
+                sumYY += gyy[i + j] * WEIGHTS[j];
+                sumXY += gxy[i + j] * WEIGHTS[j];
+            }
+            gxx[i] = sumXX;
+            gyy[i] = sumYY;
+            gxy[i] = sumXY;
         }
     }
 
-    /*
+    /**
      * Updates the strength array with the current Gaussian buffers.
      */
     private static void updateStrength() {
         for (int i = 0; i < gxx.length - 4; i++) {
-            int det = gxx[i] * gyy[i] - gxy[i] * gxy[i];
-            int trace = gxx[i] + gyy[i];
+            long det = (long) gxx[i] * gyy[i] - (long) gxy[i] * gxy[i];
+            long trace = (long) gxx[i] + gyy[i];
             double strength = det - k * trace * trace;
             s[row - 6][i] = strength;
         }
+    }
+
+    private static final int WINDOW_SIZE = 5;
+    private static final int WINDOW_RADIUS = WINDOW_SIZE / 2;
+    private static final int ROW_BUCKETS = 5;
+    private static final int COL_BUCKETS = 10;
+
+    /**
+     * Performs non-maximum suppression to get the corners for features.
+     *
+     * @param s the strength array of the image.
+     * @param features the list of list of features to store the corners divided into buckets.
+     */
+    private static void nonMaxSuppression(double[][] s, ArrayList<ArrayList<Feature>> features) {
+        int rows = s.length;
+        int cols = s[0].length;
+        double rowBucketSize = (double) rows / ROW_BUCKETS;
+        double colBucketSize = (double) cols / COL_BUCKETS;
+
+        for (int i = WINDOW_RADIUS; i < rows - WINDOW_RADIUS; i++) {
+            int rowBucket = Math.min((int) (i / rowBucketSize), ROW_BUCKETS - 1);
+            for (int j = WINDOW_RADIUS; j < cols - WINDOW_RADIUS; j++) {
+                double v = s[i][j];
+                if (isLocalMaximum(s, i, j, v)) {
+                    int colBucket = Math.min((int) (j / colBucketSize), COL_BUCKETS - 1);
+                    int bucket = rowBucket * COL_BUCKETS + colBucket;
+                    features.get(bucket).add(new Feature(v, i + 3, j + 3));
+                    j += WINDOW_RADIUS; // Skip the next WINDOW_RADIUS columns
+                }
+            }
+        }
+    }
+
+    private static boolean isLocalMaximum(double[][] s, int row, int col, double value) {
+        for (int i = -WINDOW_RADIUS; i <= WINDOW_RADIUS; i++) {
+            for (int j = -WINDOW_RADIUS; j <= WINDOW_RADIUS; j++) {
+                if (i == 0 && j == 0) continue; // Skip the center pixel
+                if (value <= s[row + i][col + j]) return false;
+            }
+        }
+        return true;
     }
 
     public static void main(String[] args) {
@@ -195,6 +229,9 @@ public class App {
             throw new RuntimeException(e);  
         }
 
+        // start timer
+        long startTime = System.currentTimeMillis();
+
         // get image width and length and init grayscale and strength arrays
         int width = image.getWidth();
         int height = image.getHeight();
@@ -202,22 +239,20 @@ public class App {
         s = new double[height - 6][width - 6];
 
         // initialize derivative buffers 
-        ixx = new int[5][width - 2];
-        iyy = new int[5][width - 2];
-        ixy = new int[5][width - 2];
+        ixx = new long[5][width - 2];
+        iyy = new long[5][width - 2];
+        ixy = new long[5][width - 2];
 
-        // initialize autocorrelation buffers
-        gxx = new int[width - 2];
-        gyy = new int[width - 2];
-        gxy = new int[width - 2];
+        // initialize gaussian buffers
+        gxx = new long[width - 2];
+        gyy = new long[width - 2];
+        gxy = new long[width - 2];
 
         // set image values to grayscale and update grayscale array
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
                 int gray = toGrayscale(image.getRGB(j, i));
                 grayImage[i][j] = gray;
-                Color grayColor = new Color(gray, gray, gray);
-                image.setRGB(j, i, grayColor.getRGB());
             }
         }
 
@@ -239,27 +274,8 @@ public class App {
             features.add(new ArrayList<Feature>());
         }
 
-        // use non-max suppression to declare features, split into 50 buckets
-        int rowBound = s.length / 5;
-        int colBound = s[0].length / 10;
-        for (int i = 2; i < s.length - 2; i++) {
-            int rowBucket = (int) (i / rowBound) > 4 ? 4 : (int) (i / rowBound); 
-            for (int j = 2; j < s[0].length - 2; j++) {
-                double v = s[i][j];
-                
-                // if strength is greater than all other strengths in a 5x5 window
-                if (v > s[i-2][j-2] && v > s[i-2][j-1] && v > s[i-2][j] && v > s[i-2][j+1] && v > s[i-2][j+2] &&
-                    v > s[i-1][j-2] && v > s[i-1][j-1] && v > s[i-1][j] && v > s[i-1][j+1] && v > s[i-1][j+2] &&
-                    v > s[i][j-2] && v > s[i][j-1] && v > s[i][j+1] && v > s[i][j+2] &&
-                    v > s[i+1][j-2] && v > s[i+1][j-1] && v > s[i+1][j] && v > s[i+1][j+1] && v > s[i+1][j+2] &&
-                    v > s[i+2][j-2] && v > s[i+2][j-1] && v > s[i+2][j] && v > s[i+2][j+1] && v > s[i+2][j+2]) {
-                    int colBucket = (int) (j / colBound) > 9 ? 9 : (int) (j / colBound);
-                    int bucket = rowBucket * 10 + colBucket;
-                    features.get(bucket).add(new Feature(v, i, j));
-                    j += 2;
-                }
-            }
-        }
+        // perform non-maximum suppression to get corners for features
+        nonMaxSuppression(s, features);
 
         // sort features in each bucket by strength and use top features
         for (int i = 0; i < 50; i++) {
@@ -268,11 +284,18 @@ public class App {
             features.set(i, new ArrayList<Feature>(features.get(i).subList(0, top)));
         }
 
+        // end timer
+        long endTime = System.currentTimeMillis();
+        System.out.println("Execution time: " + (endTime - startTime) + " ms");
+
         // draw features on image
         for (int i = 0; i < 50; i++) {
             for (Feature f : features.get(i)) {
-                for (int j = f.x - 2; j <= f.x + 2; j++) {
-                    for (int k = f.y - 2; k <= f.y + 2; k++) {
+                if (f.value < 4E9) {
+                    continue;
+                }
+                for (int j = f.x - 1; j <= f.x + 1; j++) {
+                    for (int k = f.y - 1; k <= f.y + 1; k++) {
                         image.setRGB(k, j, Color.RED.getRGB());
                     }
                 }
@@ -288,3 +311,4 @@ public class App {
         }
     }
 }
+
