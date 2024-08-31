@@ -7,6 +7,9 @@ public class Feature {
     /** The strength value of the feature. */
     double value;
 
+    /** The SAD correlation value of the feature. WARNING: may be null! */
+    Integer sad;
+
     /** The x-coordinate of the feature in the image. */
     int x;
 
@@ -50,6 +53,27 @@ public class Feature {
             }
         }
         this.c = 1 / Math.sqrt((121 * this.b - this.a * this.a));
+    }
+
+    /**
+     * Sets the SAD correlation value of the feature.
+     *
+     * @param sad The SAD correlation value of the feature.
+     */
+    public void setSad(int sad) {
+        this.sad = sad;
+    }
+
+    /**
+     * Gets the SAD correlation value of the feature.
+     *
+     * @return The SAD correlation value of the feature.
+     */
+    public int getSAD() {
+        if (this.sad == null) {
+            throw new IllegalStateException("SAD correlation value has not been set.");
+        }
+        return this.sad;
     }
 }
 

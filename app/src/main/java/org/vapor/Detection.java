@@ -179,8 +179,9 @@ public class Detection {
         return true;
     }
 
-    public static FeatureInfo detect(BufferedImage image, int[][] grayImage) {
+    public static FeatureInfo detect(BufferedImage image, int[][] grayscale) {
         // get image width and length and init strength array
+        grayImage = grayscale;
         int width = image.getWidth();
         int height = image.getHeight();
         s = new double[height - 6][width - 6];
