@@ -1,29 +1,33 @@
 package org.vapor;
 
+import java.util.Objects;
+
 /**
  * Represents a feature in an image with its strength value and coordinates.
  */
 public class Feature {
     /** The strength value of the feature. */
-    double value;
+    public double value;
 
     /** The SAD correlation value of the feature. WARNING: may be null! */
-    Integer sad;
+    private Integer sad;
 
     /** The x-coordinate of the feature in the image. */
-    int x;
+    public int x;
 
     /** The y-coordinate of the feature in the image. */
-    int y;
+    public int y;
 
     /** The cumulative sum of the pixel intensities in a 11x11 window around the feature. */
-    int a;
+    public int a;
 
     /** The cumulative sum of the pixel intensities squared in a 11x11 window around the feature. */
-    int b;
+    public int b;
 
     /** A value inversely proportional to the standard deviation of the pixel intensities in a 11x11 window around the feature. */
-    double c;
+    public double c;
+
+    private int hashCode;
 
     /**
      * Constructs a new Feature with the specified strength value and coordinates.
@@ -53,6 +57,9 @@ public class Feature {
             }
         }
         this.c = 1 / Math.sqrt((121 * this.b - this.a * this.a));
+
+        // set hash code
+        this.hashCode = Objects.hash(value, x, y, image);
     }
 
     /**
@@ -74,6 +81,23 @@ public class Feature {
             throw new IllegalStateException("SAD correlation value has not been set.");
         }
         return this.sad;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof Feature)) {
+            return false;
+        }
+        Feature other = (Feature) obj;
+        return this.value == other.value && this.x == other.x && this.y == other.y && this.sad == other.sad;
+    }
+
+    @Override
+    public int hashCode() {
+        return this.hashCode;
     }
 }
 

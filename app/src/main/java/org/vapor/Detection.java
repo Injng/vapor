@@ -39,8 +39,8 @@ public class Detection {
     /** The grayscale values of the buffered image. */
     static int[][] grayImage;
 
-    /** The row count, which starts at 1 to avoid the first row of the image. */
-    static int row = 1;
+    /** The row count, which will start at 1 to avoid the first row of the image. */
+    static int row;
 
     /** The constant k in the Harris corner response function. */
     static final double k = 0.06;
@@ -142,6 +142,7 @@ public class Detection {
     private static final int WINDOW_RADIUS = WINDOW_SIZE / 2;
     private static final int ROW_BUCKETS = 5;
     private static final int COL_BUCKETS = 10;
+    private static final double MIN_STRENGTH = 1E10;
 
     /**
      * Performs non-maximum suppression to get the corners for features.
@@ -159,6 +160,8 @@ public class Detection {
             int rowBucket = Math.min((int) (i / rowBucketSize), ROW_BUCKETS - 1);
             for (int j = WINDOW_RADIUS; j < cols - WINDOW_RADIUS; j++) {
                 double v = s[i][j];
+                // check if the strength is greater than the minimum strength
+                if (v < MIN_STRENGTH) continue;
                 if (isLocalMaximum(s, i, j, v)) {
                     int colBucket = Math.min((int) (j / colBucketSize), COL_BUCKETS - 1);
                     int bucket = rowBucket * COL_BUCKETS + colBucket;
@@ -181,6 +184,7 @@ public class Detection {
 
     public static FeatureInfo detect(BufferedImage image, int[][] grayscale) {
         // get image width and length and init strength array
+        row = 1;
         grayImage = grayscale;
         int width = image.getWidth();
         int height = image.getHeight();
@@ -202,7 +206,7 @@ public class Detection {
         }
 
         // loop to calculate derivatives and strengths
-        for (int i = 5; i < height - 6; i++) {
+        for (int i = 5; i < height - 3; i++) {
             updateGaussian();
             updateStrength();
             updateDerivatives(grayImage);
@@ -232,20 +236,6 @@ public class Detection {
             }
         }
 
-        // draw features on image
-        for (int i = 0; i < 50; i++) {
-            for (Feature f : features.get(i)) {
-                if (f.value < 4E9) {
-                    continue;
-                }
-                for (int j = f.x - 1; j <= f.x + 1; j++) {
-                    for (int k = f.y - 1; k <= f.y + 1; k++) {
-                        image.setRGB(k, j, Color.RED.getRGB());
-                    }
-                }
-            }
-        }
-
         // save new grayscale image
         try {
             File file = new File("grayscale.png");
@@ -254,6 +244,6 @@ public class Detection {
             throw new RuntimeException(e);
         }
 
-        return new FeatureInfo(s, featureArray);
+        return new FeatureInfo(s, featureArray, grayImage);
     }
 }

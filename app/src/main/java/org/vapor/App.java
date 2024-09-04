@@ -2,8 +2,11 @@ package org.vapor;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 public class App {
     /**
@@ -21,31 +24,103 @@ public class App {
         return (r + g + b) / 3;
     }
 
+    private static void drawLine(BufferedImage image, int x1, int y1, int x2, int y2, int color) {
+        int dx = Math.abs(x2 - x1);
+        int dy = Math.abs(y2 - y1);
+        int sx = x1 < x2 ? 1 : -1;
+        int sy = y1 < y2 ? 1 : -1;
+        int err = dx - dy;
+        while (true) {
+            image.setRGB(y1, x1, color);
+            if (x1 == x2 && y1 == y2) {
+                break;
+            }
+            int e2 = 2 * err;
+            if (e2 > -dy) {
+                err -= dy;
+                x1 += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y1 += sy;
+            }
+        }
+    }
+
     public static void main(String[] args) {
-        // get image from resources
-        BufferedImage image;
+        // get images from resources
+        BufferedImage image1;
         try {
-            InputStream is = App.class.getResourceAsStream("/picture.png");
-            image = ImageIO.read(is);
+            InputStream is = App.class.getResourceAsStream("/picture1.jpg");
+            image1 = ImageIO.read(is);
+        } catch (IOException e) {
+            throw new RuntimeException(e);  
+        }
+        BufferedImage image2;
+        try {
+            InputStream is = App.class.getResourceAsStream("/picture2.jpg");
+            image2 = ImageIO.read(is);
         } catch (IOException e) {
             throw new RuntimeException(e);  
         }
 
         // get height and width
-        int width = image.getWidth();
-        int height = image.getHeight();
+        int width1 = image1.getWidth();
+        int height1 = image1.getHeight();
+        int width2 = image2.getWidth();
+        int height2 = image2.getHeight();
 
         // set image values to grayscale and update grayscale array
-        int[][] grayImage = new int[height][width];
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-                int gray = toGrayscale(image.getRGB(j, i));
-                grayImage[i][j] = gray;
+        int[][] grayImage1 = new int[height1][width1];
+        for (int i = 0; i < height1; i++) {
+            for (int j = 0; j < width1; j++) {
+                int gray = toGrayscale(image1.getRGB(j, i));
+                grayImage1[i][j] = gray;
+            }
+        }
+        int[][] grayImage2 = new int[height2][width2];
+        for (int i = 0; i < height2; i++) {
+            for (int j = 0; j < width2; j++) {
+                int gray = toGrayscale(image2.getRGB(j, i));
+                grayImage2[i][j] = gray;
             }
         }
 
         // run image detection
-        FeatureInfo infoA = Detection.detect(image, grayImage);
+        FeatureInfo infoA = Detection.detect(image1, grayImage1);
+        FeatureInfo infoB = Detection.detect(image2, grayImage2);
+
+        // run feature matching
+        ArrayList<Feature[]> matches = Tracking.track(infoA, infoB);
+
+        // visualize matches
+        HashMap<Integer, Integer> check = new HashMap<>();
+        for (Feature[] match : matches) {
+            Feature a = match[0];
+            Feature b = match[1];
+            if (check.get(b.x) != null) {
+                if (check.get(b.x) == b.y) {
+                    System.out.println("Duplicate match detected");
+                }
+            } else {
+                check.put(b.x, b.y);
+            }
+            drawLine(image1, a.x, a.y, b.x, b.y, 0x0000FF);
+            for (int i = -1; i <= 1; i++) {
+                for (int j = -1; j <= 1; j++) {
+                    image1.setRGB(a.y + j, a.x + i, 0xFF0000);
+                    image1.setRGB(b.y + j, b.x + i, 0x00FF00);
+                }
+            }
+        }
+
+        // write image to file
+        try {
+            File file = new File("output.jpg");
+            ImageIO.write(image1, "jpg", file);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
 

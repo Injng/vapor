@@ -2,6 +2,8 @@ package org.vapor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Set;
+import java.util.HashSet;
 import java.lang.Math;
 
 public class Tracking {
@@ -27,8 +29,8 @@ public class Tracking {
         for (int i = -5; i <= 5; i++) {
             for (int j = -5; j <= 5; j++) {
                 // get pixel values
-                int a = infoA.features[ax + i][ay + j];
-                int b = infoB.features[bx + i][by + j];
+                int a = infoA.image[ax + i][ay + j];
+                int b = infoB.image[bx + i][by + j];
                 // add absolute difference
                 sum += Math.abs(a - b);
             }
@@ -42,7 +44,11 @@ public class Tracking {
      * @param infoA the FeatureInfo object representing the first image.
      * @param infoB the FeatureInfo object representing the second image.
      */
-    public static ArrayList<Feature[]> track(FeatureInfo infoA, FeatureInfo infoB) {
+    public static ArrayList<Feature[]> track(FeatureInfo infoAIn, FeatureInfo infoBIn) {
+        // set infoA and infoB
+        infoA = infoAIn;
+        infoB = infoBIn;
+
         // get height and width
         int height = infoA.height;
         int width = infoA.width;
@@ -53,7 +59,7 @@ public class Tracking {
 
         // iterate through the features in infoA
         for (int i = 0; i < height; i++) {
-            for (int j = 0; j < height; j++) {
+            for (int j = 0; j < width; j++) {
                 // check if feature exists
                 if (infoA.features[i][j] == 0) { continue; }
 
@@ -73,24 +79,29 @@ public class Tracking {
                         int sad = sad(i, j, x, y);
                         if (sad < minSAD) {
                             minSAD = sad;
-                            bestMatch = new Feature(infoB.strengths[x][y], x, y, infoB.features);
+                            bestMatch = new Feature(infoB.strengths[x-3][y-3], x, y, infoB.features);
                         }
                     }
                 }
 
+                // if no match found, continue
+                if (bestMatch == null) { continue; }
+
                 // map bestMatch from image A to image B
-                Feature matchA = new Feature(infoA.strengths[i][j], i, j, infoA.features);
+                Feature matchA = new Feature(infoA.strengths[i-3][j-3], i, j, infoA.features);
                 matchA.setSad(minSAD);
-                mapA.put(matchA, bestMatch);
 
                 // map bestMatch from image B to image A if it doesn't exist
                 if (mapB.get(bestMatch) == null) {
-                    mapB.put(bestMatch, new Feature(infoA.strengths[i][j], i, j, infoA.features));
+                    mapA.put(matchA, bestMatch);
+                    mapB.put(bestMatch, matchA);
                 }
 
                 // otherwise, check if the SAD is lower
-                else if (minSAD < mapB.get(bestMatch).sad) {
-                    mapB.put(bestMatch, new Feature(infoA.strengths[i][j], i, j, infoA.features));
+                else if (minSAD < mapB.get(bestMatch).getSAD()) {
+                    mapA.remove(mapB.get(bestMatch));
+                    mapA.put(matchA, bestMatch);
+                    mapB.put(bestMatch, matchA);
                 }
             }
         }
@@ -98,8 +109,18 @@ public class Tracking {
         // check for mutual consistency between mapA and mapB
         ArrayList<Feature[]> matches = new ArrayList<Feature[]>();
         for (Feature f : mapA.keySet()) {
-            if (mapB.get(mapA.get(f)) == f) {
+            if (mapB.get(mapA.get(f)).equals(f)) {
                 matches.add(new Feature[] {f, mapA.get(f)});
+            }
+        }
+
+        HashMap<Feature, Feature> check2 = new HashMap<Feature, Feature>();
+        for (Feature[] f : matches) {
+            if (check2.get(f[1]) != null) {
+                System.out.println("Multiple match detected");
+                System.out.println(f[0].x + " " + f[0].y + " " + f[1].x + " " + f[1].y);
+            } else {
+                check2.put(f[1], f[0]);
             }
         }
 
