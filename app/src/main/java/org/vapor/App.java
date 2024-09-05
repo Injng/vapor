@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 
 public class App {
     /**
@@ -51,18 +50,22 @@ public class App {
         // get images from resources
         BufferedImage image1;
         try {
-            InputStream is = App.class.getResourceAsStream("/picture1.jpg");
+            InputStream is = App.class.getResourceAsStream("/picture1.png");
             image1 = ImageIO.read(is);
         } catch (IOException e) {
             throw new RuntimeException(e);  
         }
         BufferedImage image2;
         try {
-            InputStream is = App.class.getResourceAsStream("/picture2.jpg");
+            InputStream is = App.class.getResourceAsStream("/picture2.png");
             image2 = ImageIO.read(is);
         } catch (IOException e) {
             throw new RuntimeException(e);  
         }
+
+        // use benchmarking
+        Benchmark benchmark = new Benchmark();
+        benchmark.mark();
 
         // get height and width
         int width1 = image1.getWidth();
@@ -87,24 +90,27 @@ public class App {
         }
 
         // run image detection
+        benchmark.mark();
         FeatureInfo infoA = Detection.detect(image1, grayImage1);
+        benchmark.mark();
+        benchmark.print("cornerA detection");
         FeatureInfo infoB = Detection.detect(image2, grayImage2);
+        benchmark.mark();
+        benchmark.print("cornerB detection");
 
         // run feature matching
         ArrayList<Feature[]> matches = Tracking.track(infoA, infoB);
+        benchmark.mark();
+        benchmark.print("feature matching");
+
+        // get total benchmark
+        benchmark.mark();
+        benchmark.total();
 
         // visualize matches
-        HashMap<Integer, Integer> check = new HashMap<>();
         for (Feature[] match : matches) {
             Feature a = match[0];
             Feature b = match[1];
-            if (check.get(b.x) != null) {
-                if (check.get(b.x) == b.y) {
-                    System.out.println("Duplicate match detected");
-                }
-            } else {
-                check.put(b.x, b.y);
-            }
             drawLine(image1, a.x, a.y, b.x, b.y, 0x0000FF);
             for (int i = -1; i <= 1; i++) {
                 for (int j = -1; j <= 1; j++) {
@@ -116,8 +122,8 @@ public class App {
 
         // write image to file
         try {
-            File file = new File("output.jpg");
-            ImageIO.write(image1, "jpg", file);
+            File file = new File("output.png");
+            ImageIO.write(image1, "png", file);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
