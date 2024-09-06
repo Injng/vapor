@@ -114,16 +114,6 @@ public class Tracking {
             }
         }
 
-        HashMap<Feature, Feature> check2 = new HashMap<Feature, Feature>();
-        for (Feature[] f : matches) {
-            if (check2.get(f[1]) != null) {
-                System.out.println("Multiple match detected");
-                System.out.println(f[0].x + " " + f[0].y + " " + f[1].x + " " + f[1].y);
-            } else {
-                check2.put(f[1], f[0]);
-            }
-        }
-
         return matches;
     }
 }
