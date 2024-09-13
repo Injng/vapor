@@ -23,6 +23,7 @@ dependencies {
 
     // This dependency is used by the application.
     implementation(libs.guava)
+    implementation("org.ejml:ejml-all:0.43.1")
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
@@ -37,7 +38,3 @@ application {
     mainClass = "org.vapor.App"
 }
 
-tasks.named<Test>("test") {
-    // Use JUnit Platform for unit tests.
-    useJUnitPlatform()
-}

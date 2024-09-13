@@ -2,3 +2,5 @@
 build/
 .jpg
 .png
+.idea/
+local.properties
