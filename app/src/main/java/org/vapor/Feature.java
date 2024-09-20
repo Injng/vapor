@@ -1,5 +1,8 @@
 package org.vapor;
 
+import org.opencv.core.Point;
+import org.opencv.core.Point3;
+
 import java.util.Objects;
 
 /**
@@ -81,6 +84,15 @@ public class Feature {
             throw new IllegalStateException("SAD correlation value has not been set.");
         }
         return this.sad;
+    }
+
+    /**
+     * Converts the feature to a 2D openCV point.
+     *
+     * @return The feature as a 2D openCV point.
+     */
+    public Point toPoint() {
+        return new Point(this.x, this.y);
     }
 
     @Override

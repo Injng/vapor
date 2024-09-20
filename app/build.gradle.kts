@@ -24,6 +24,7 @@ dependencies {
     // This dependency is used by the application.
     implementation(libs.guava)
     implementation("org.ejml:ejml-all:0.43.1")
+    implementation("org.openpnp:opencv:4.9.0-0")
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

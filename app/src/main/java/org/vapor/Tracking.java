@@ -39,8 +39,8 @@ public class Tracking {
     /**
      * Tracks features between two images.
      *
-     * @param infoA the FeatureInfo object representing the first image.
-     * @param infoB the FeatureInfo object representing the second image.
+     * @param infoAIn the FeatureInfo object representing the first image.
+     * @param infoBIn the FeatureInfo object representing the second image.
      */
     public static ArrayList<Feature[]> track(FeatureInfo infoAIn, FeatureInfo infoBIn) {
         // set infoA and infoB

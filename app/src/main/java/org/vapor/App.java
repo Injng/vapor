@@ -13,6 +13,7 @@ public class App {
      * 
      * @param rgb the RGB color value as an integer, where the red component is in the high byte, followed by green,
      *            and blue in the low byte. This value should be obtained from methods like {@link java.awt.image.BufferedImage#getRGB(int, int)}.
+     *
      * @return the grayscale value as an integer. This value represents the average of the red, green, and blue
      *         components of the input RGB value, which ranges from 0 (black) to 255 (white).
      */
@@ -129,4 +130,3 @@ public class App {
         }
     }
 }
-
