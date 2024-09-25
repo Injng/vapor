@@ -7,7 +7,7 @@ public class FeatureInfo {
     /** The strengths of the features, offset by 3 in both dimensions from the image. */
     public double[][] strengths;
 
-    /** The features of the image. */
+    /** The features of the image, marked by a 1 in the location where there is a feature. */
     public int[][] features;
 
     /** The height of the image. */

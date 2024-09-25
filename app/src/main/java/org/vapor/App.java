@@ -1,28 +1,49 @@
 package org.vapor;
 
-import javax.imageio.ImageIO;
+import org.ejml.simple.SimpleMatrix;
+import org.opencv.core.Core;
+import org.opencv.core.MatOfDouble;
+import org.opencv.core.Point;
+import org.opencv.core.Point3;
+
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 public class App {
-    /**
-     * Converts a color pixel value to a grayscale intensity.
-     * 
-     * @param rgb the RGB color value as an integer, where the red component is in the high byte, followed by green,
-     *            and blue in the low byte. This value should be obtained from methods like {@link java.awt.image.BufferedImage#getRGB(int, int)}.
-     *
-     * @return the grayscale value as an integer. This value represents the average of the red, green, and blue
-     *         components of the input RGB value, which ranges from 0 (black) to 255 (white).
-     */
-    private static int toGrayscale(int rgb) {
-        int r = (rgb >> 16) & 0xFF;
-        int g = (rgb >> 8) & 0xFF;
-        int b = (rgb & 0xFF);
-        return (r + g + b) / 3;
-    }
+    /** The intrinsics matrix for camera 1. */
+    private static final SimpleMatrix mtx1 = new SimpleMatrix(new double[][]{
+            {1235.45723, 0.0, 586.197756},
+            {0.0, 1159.97889, 487.408735},
+            {0.0, 0.0, 1.0}
+    });
+
+    /** The distortion coefficients for camera 1. */
+    private static final MatOfDouble dist1 = new MatOfDouble(new double[]{0.03852127, -0.2639929, 0.01173549, -0.00741738, 0.32940914});
+
+    /** The intrinsics matrix for camera 2. */
+    private static final SimpleMatrix mtx2 = new SimpleMatrix(new double[][]{
+            {831.928232, 0.0, 616.3016761},
+            {0.0, 779.51864043, 467.44607183},
+            {0.0, 0.0, 1.0}
+    });
+
+    /** The distortion coefficients for camera 2. */
+    private static final MatOfDouble dist2 = new MatOfDouble(new double[]{0.05883428, -0.13611729, 0.00960835, -0.00353916, 0.01426129});
+
+    /** The rotation matrix for the stereo camera system. */
+    private static final SimpleMatrix R = new SimpleMatrix(new double[][]{
+            {0.19364412, -0.07078774, 0.97851472},
+            {0.22308861, 0.97444211, 0.02634478},
+            {-0.95537083, 0.21319398, 0.20448692}
+    });
+
+    /** The translation vector for the stereo camera system. */
+    private static final SimpleMatrix T = new SimpleMatrix(new double[][]{
+            {-24.85136975},
+            {-1.77457249},
+            {16.61001315}
+    });
 
     private static void drawLine(BufferedImage image, int x1, int y1, int x2, int y2, int color) {
         int dx = Math.abs(x2 - x1);
@@ -48,66 +69,59 @@ public class App {
     }
 
     public static void main(String[] args) {
-        // get images from resources
-        BufferedImage image1;
-        try {
-            InputStream is = App.class.getResourceAsStream("/picture1.png");
-            image1 = ImageIO.read(is);
-        } catch (IOException e) {
-            throw new RuntimeException(e);  
-        }
-        BufferedImage image2;
-        try {
-            InputStream is = App.class.getResourceAsStream("/picture2.png");
-            image2 = ImageIO.read(is);
-        } catch (IOException e) {
-            throw new RuntimeException(e);  
-        }
+        System.load("/usr/lib/libopencv_java.so");
 
-        // use benchmarking
-        Benchmark benchmark = new Benchmark();
-        benchmark.mark();
+        // initialize Stereo object
+        Stereo cameras = new Stereo(mtx1, mtx2, dist1, dist2, R, T);
 
-        // get height and width
-        int width1 = image1.getWidth();
-        int height1 = image1.getHeight();
-        int width2 = image2.getWidth();
-        int height2 = image2.getHeight();
-
-        // set image values to grayscale and update grayscale array
-        int[][] grayImage1 = new int[height1][width1];
-        for (int i = 0; i < height1; i++) {
-            for (int j = 0; j < width1; j++) {
-                int gray = toGrayscale(image1.getRGB(j, i));
-                grayImage1[i][j] = gray;
-            }
-        }
-        int[][] grayImage2 = new int[height2][width2];
-        for (int i = 0; i < height2; i++) {
-            for (int j = 0; j < width2; j++) {
-                int gray = toGrayscale(image2.getRGB(j, i));
-                grayImage2[i][j] = gray;
-            }
-        }
+        // get stereo image frames
+        Frame frame1 = new Frame("./1A.png", "./1B.png");
+        Frame frame2 = new Frame("./2A.png", "./2B.png");
 
         // run image detection
-        benchmark.mark();
-        FeatureInfo infoA = Detection.detect(image1, grayImage1);
-        benchmark.mark();
-        benchmark.print("cornerA detection");
-        FeatureInfo infoB = Detection.detect(image2, grayImage2);
-        benchmark.mark();
-        benchmark.print("cornerB detection");
+        FeatureInfo info1A = Detection.detect(frame1.leftImage, frame1.leftGrayImage);
+        FeatureInfo info1B = Detection.detect(frame1.rightImage, frame1.rightGrayImage);
+        FeatureInfo info2A = Detection.detect(frame2.leftImage, frame2.leftGrayImage);
+        FeatureInfo info2B = Detection.detect(frame2.rightImage, frame2.rightGrayImage);
 
-        // run feature matching
-        ArrayList<Feature[]> matches = Tracking.track(infoA, infoB);
-        benchmark.mark();
-        benchmark.print("feature matching");
+        // run feature matching between the stereo pairs
+        HashMap<Feature, Feature> stereo1Matches = Tracking.track(info1A, info1B);
+        HashMap<Feature, Feature> stereo2Matches = Tracking.track(info2A, info2B);
 
-        // get total benchmark
-        benchmark.mark();
-        benchmark.total();
+        // run feature matching between the two frames
+        HashMap<Feature, Feature> frameMatches = Tracking.track(info1A, info2A);
 
+        // for each feature match between the two frames, triangulate the 3D point in the first frame
+        ArrayList<Point> points2D = new ArrayList<>();
+        ArrayList<Point3> points3D = new ArrayList<>();
+        for (Feature feature1A : frameMatches.keySet()) {
+            Feature feature2A = frameMatches.get(feature1A);
+
+            // ensure feature1A and feature2A has a match in the stereo pair
+            if (!stereo1Matches.containsKey(feature1A)) continue;
+            if (!stereo2Matches.containsKey(feature2A)) continue;
+
+            // get the corresponding features in the stereo pair
+            Feature feature1B = stereo1Matches.get(feature1A);
+            // Feature feature2B = stereo2Matches.get(feature2A);
+
+            // triangulate the feature in the first frame
+            double[] point1 = new double[]{feature1A.x, feature1A.y};
+            double[] point2 = new double[]{feature1B.x, feature1B.y};
+            Point3 point3D = cameras.triangulate(point1, point2);
+
+            // add the 2D and 3D points to the list
+            points2D.add(new Point(feature2A.x, feature2A.y));
+            points3D.add(new Point3(point3D.x, point3D.y, point3D.z));
+        }
+
+        // run preemptive RANSAC
+        Motion best_hypothesis = RANSAC.ransac(points2D, points3D, cameras);
+
+        // print best hypothesis
+        System.out.println(best_hypothesis);
+
+/*
         // visualize matches
         for (Feature[] match : matches) {
             Feature a = match[0];
@@ -128,5 +142,6 @@ public class App {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+ */
     }
 }

@@ -22,14 +22,14 @@ public class RANSAC {
     /**
      * Randomly selects a sample of matches from the input list.
      *
-     * @param matches     the list of feature correspondences
-     * @param sampleSize  the number of matches to select
-     * @param random      the random number generator
+     * @param points the list of feature correspondences
+     * @param sampleSize the number of matches to select
+     * @param random the random number generator
      *
      * @return a list of feature correspondences representing the random sample
      */
-    private static List<Feature[]> getRandomSample(List<Feature[]> matches, int sampleSize, Random random) {
-        ArrayList<Feature[]> sample = new ArrayList<>(matches);
+    private static List<Object[]> getRandomSample(List<Object[]> points, int sampleSize, Random random) {
+        ArrayList<Object[]> sample = new ArrayList<>(points);
         Collections.shuffle(sample, random);
         return sample.subList(0, sampleSize);
     }
@@ -106,6 +106,7 @@ public class RANSAC {
         Mat rvec = hypothesis.rotation;
         Mat tvec = hypothesis.translation;
         Calib3d.projectPoints(points3D, rvec, tvec, cameras.getCamera(), cameras.getDistortion(), projectedPoints);
+
         // compute the error
         Mat diff = new Mat();
         Core.subtract(projectedPoints, points2D, diff);
@@ -177,34 +178,40 @@ public class RANSAC {
     /**
      * Generates a list of hypotheses by randomly selecting samples of matches.
      *
-     * @param matches the list of feature correspondences
+     * @param points2D the 2D points in the image from the reference camera
+     * @param points3D the 3D points in the world frame
      * @param cameras the stereo camera system
      *
      * @return a list of hypotheses
      */
-    private static List<Motion> generateHypotheses(List<Feature[]> matches, Stereo cameras) {
+    private static List<Motion> generateHypotheses(MatOfPoint2f points2D, MatOfPoint3f points3D, Stereo cameras) {
         ArrayList<Motion> hypotheses = new ArrayList<>();
         Random random = new Random();
 
-        for (int i = 0; i < NUM_HYPOTHESES; i++) {
-            List<Feature[]> sample = getRandomSample(matches, MIN_SAMPLE_SIZE, random);
+        // marry the 2D and 3D points together
+        List<Object[]> points = new ArrayList<>();
+        for (int j = 0; j < points2D.rows(); j++) {
+            points.add(new Object[]{ points2D.get(j, 0), points3D.get(j, 0) });
+        }
 
-            // build matrices of 2D and 3D points, using the first image as the reference
+        for (int i = 0; i < NUM_HYPOTHESES; i++) {
+            // get a random sample of matches
+            List<Object[]> sample = getRandomSample(points, MIN_SAMPLE_SIZE, random);
+
+            // divorce the 2D and 3D points in the sample
             ArrayList<Point> list2D = new ArrayList<Point>();
             ArrayList<Point3> list3D = new ArrayList<Point3>();
-            for (Feature[] correspondence : sample) {
-                list2D.add(correspondence[0].toPoint());
-                double[] first = { correspondence[0].x, correspondence[0].y };
-                double[] second = { correspondence[1].x, correspondence[1].y };
-                list3D.add(cameras.triangulate(first, second));
+            for (Object[] correspondence : sample) {
+                list2D.add((Point) correspondence[0]);
+                list3D.add((Point3) correspondence[1]);
             }
-            MatOfPoint2f points2D = new MatOfPoint2f();
-            MatOfPoint3f points3D = new MatOfPoint3f();
-            points2D.fromList(list2D);
-            points3D.fromList(list3D);
+            MatOfPoint2f sample2D = new MatOfPoint2f();
+            MatOfPoint3f sample3D = new MatOfPoint3f();
+            sample2D.fromList(list2D);
+            sample3D.fromList(list3D);
 
             // estimate the motion hypothesis
-            Motion hypothesis = estimateMotion(points2D, points3D, cameras);
+            Motion hypothesis = estimateMotion(sample2D, sample3D, cameras);
             hypotheses.add(hypothesis);
         }
 
@@ -214,28 +221,21 @@ public class RANSAC {
     /**
      * Runs the RANSAC algorithm to estimate the camera motion.
      *
-     * @param matches the list of feature correspondences
+     * @param points2D the 2D points in the image from the reference camera
+     * @param points3D the 3D points in the world frame
      * @param cameras the stereo camera system
      *
-     * @return the estimated camera pose
+     * @return the best estimated camera motion
      */
-    public static Motion ransac(List<Feature[]> matches, Stereo cameras) {
+    public static Motion ransac(ArrayList<Point> points2D, ArrayList<Point3> points3D, Stereo cameras) {
         // Convert matches to points
-        ArrayList<Point> points2D = new ArrayList<Point>();
-        ArrayList<Point3> triangulatedPts = new ArrayList<Point3>();
-        for (Feature[] match : matches) {
-            points2D.add(match[0].toPoint());
-            double[] first = { match[0].x, match[0].y };
-            double[] second = { match[1].x, match[1].y };
-            triangulatedPts.add(cameras.triangulate(first, second));
-        }
         MatOfPoint2f srcMat = new MatOfPoint2f();
         MatOfPoint3f triangulatedMat = new MatOfPoint3f();
         srcMat.fromList(points2D);
-        triangulatedMat.fromList(triangulatedPts);
+        triangulatedMat.fromList(points3D);
 
         // run preemptive RANSAC by generating hypotheses, scoring them, and refining the best one
-        List<Motion> hypotheses = generateHypotheses(matches, cameras);
+        List<Motion> hypotheses = generateHypotheses(srcMat, triangulatedMat, cameras);
         Motion best_hypothesis = score(hypotheses, triangulatedMat, srcMat, cameras);
         refineSolution(best_hypothesis, cameras, srcMat, triangulatedMat, 100, 0.1, 0.01);
 

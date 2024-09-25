@@ -7,6 +7,8 @@ import org.opencv.core.Mat;
 import org.opencv.core.MatOfDouble;
 import org.opencv.core.Point3;
 
+import java.util.HashMap;
+
 /**
  * Represents a stereo camera system.
  */
@@ -32,6 +34,9 @@ public class Stereo {
     /* A pointer to the reference camera's instrinsics matrix. */
     private final SimpleMatrix camera;
 
+    /* A hashmap of features, mapping from the first image to the second image. */
+    private final HashMap<Feature, Feature> featureMap;
+
     public Stereo(SimpleMatrix mtx1, SimpleMatrix mtx2, MatOfDouble dist1, MatOfDouble dist2, SimpleMatrix R, SimpleMatrix T) {
         // store the camera and distortion matrices
         this.mtx1 = mtx1;
@@ -56,6 +61,9 @@ public class Stereo {
 
         // projection matrix for C2 (3x4)
         this.proj2 =  mtx2.mult(RT2);
+
+        // initialize feature map
+        this.featureMap = new HashMap<>();
     }
 
     /**

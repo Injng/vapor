@@ -42,7 +42,7 @@ public class Tracking {
      * @param infoAIn the FeatureInfo object representing the first image.
      * @param infoBIn the FeatureInfo object representing the second image.
      */
-    public static ArrayList<Feature[]> track(FeatureInfo infoAIn, FeatureInfo infoBIn) {
+    public static HashMap<Feature, Feature> track(FeatureInfo infoAIn, FeatureInfo infoBIn) {
         // set infoA and infoB
         infoA = infoAIn;
         infoB = infoBIn;
@@ -105,10 +105,10 @@ public class Tracking {
         }
 
         // check for mutual consistency between mapA and mapB
-        ArrayList<Feature[]> matches = new ArrayList<Feature[]>();
+        HashMap<Feature, Feature> matches = new HashMap<Feature, Feature>();
         for (Feature f : mapA.keySet()) {
             if (mapB.get(mapA.get(f)).equals(f)) {
-                matches.add(new Feature[] {f, mapA.get(f)});
+                matches.put(f, mapA.get(f));
             }
         }
 
